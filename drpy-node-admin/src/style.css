@@ -1,0 +1,186 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Instrument Panel 设计 token
+   暗色为默认主题（theme store 默认 dark）；html:not(.dark) 为亮色完整对应。
+   变量以裸 RGB 三元组存储，供 tailwind 以 rgb(var(--c-x) / alpha) 消费。
+   ============================================================ */
+:root {
+  /* 亮色 */
+  --c-app: 244 246 248;
+  --c-panel: 255 255 255;
+  --c-sunken: 238 241 244;
+  --c-line: rgba(15, 23, 42, 0.09);
+  --c-hi: 15 23 42;
+  --c-mid: 71 85 105;
+  --c-low: 148 163 184;
+  --c-accent: 13 148 136;
+  --c-accent-dim: rgba(13, 148, 136, 0.1);
+  --c-ok: 22 163 74;
+  --c-warn: 217 119 6;
+  --c-danger: 220 38 38;
+  --c-info: 37 99 235;
+  --grid-dot: rgba(15, 23, 42, 0.05);
+  --shadow-float: 0 16px 48px rgba(15, 23, 42, 0.18);
+}
+
+.dark {
+  /* 暗色（深空石墨，非纯黑） */
+  --c-app: 11 15 20;
+  --c-panel: 17 22 29;
+  --c-sunken: 13 17 23;
+  --c-line: rgba(148, 163, 184, 0.14);
+  --c-hi: 230 237 243;
+  --c-mid: 139 152 169;
+  --c-low: 91 102 118;
+  --c-accent: 45 212 191;
+  --c-accent-dim: rgba(45, 212, 191, 0.12);
+  --c-ok: 74 222 128;
+  --c-warn: 251 191 36;
+  --c-danger: 248 113 113;
+  --c-info: 96 165 250;
+  --grid-dot: rgba(148, 163, 184, 0.07);
+  --shadow-float: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+
+@layer base {
+  body {
+    @apply bg-app text-hi font-sans text-[13px];
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  ::selection {
+    background: var(--c-accent-dim);
+  }
+}
+
+@layer components {
+  /* ---------- 面板：hairline 边框 + 底色微差分层（替代阴影） ---------- */
+  .panel {
+    @apply bg-panel border border-line rounded-panel;
+  }
+
+  /* mono 眉题：10px 大写 + 宽字距，如 // PLUGINS */
+  .eyebrow {
+    @apply font-mono text-[10px] uppercase tracking-[0.15em] text-low;
+  }
+
+  /* ---------- 兼容层：旧类名保留，样式引用新 token（视觉渐进趋同） ---------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-ctrl px-3.5 py-2 text-[13px] font-medium transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  /* 主按钮：暗色下 accent 为亮青配深字，亮色下 accent 为深青配白字 */
+  .btn-primary {
+    @apply btn bg-accent text-[#04211d] hover:brightness-110 active:translate-y-px font-medium;
+  }
+  html:not(.dark) .btn-primary {
+    color: #ffffff;
+  }
+
+  .btn-secondary {
+    @apply btn border border-line bg-panel text-hi hover:bg-sunken active:translate-y-px;
+  }
+
+  .btn-danger {
+    @apply btn bg-danger text-white hover:brightness-110 active:translate-y-px;
+  }
+
+  .btn-success {
+    @apply btn bg-ok text-[#052e12] hover:brightness-110 active:translate-y-px;
+  }
+  html:not(.dark) .btn-success {
+    color: #ffffff;
+  }
+
+  .card {
+    @apply bg-panel border border-line rounded-panel;
+  }
+
+  .input {
+    @apply w-full h-[38px] px-3 py-2 bg-sunken border border-line rounded-ctrl text-hi placeholder-low focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent/60 transition-colors text-[13px];
+  }
+
+  textarea.input {
+    @apply h-auto;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-2xs font-mono;
+  }
+
+  .badge-success {
+    @apply badge bg-ok/10 text-ok border border-ok/25;
+  }
+
+  .badge-warning {
+    @apply badge bg-warn/10 text-warn border border-warn/25;
+  }
+
+  .badge-error {
+    @apply badge bg-danger/10 text-danger border border-danger/25;
+  }
+
+  .badge-info {
+    @apply badge bg-info/10 text-info border border-info/25;
+  }
+}
+
+/* ============================================================
+   仪表台质感：内容区 24px 网格点阵（图纸底），面板浮于其上
+   ============================================================ */
+.grid-bg {
+  background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* 页面入场：面板级 staggered fade-up（首屏一次性编排，配合 style="--i:n"） */
+.enter-stagger > * {
+  animation: fadeUp 0.35s ease both;
+  animation-delay: calc(var(--i, 0) * 80ms);
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 横向滚动渐隐提示（移动端可滑暗示） */
+.scroll-x-fade {
+  background: linear-gradient(to right, var(--c-panel) 85%, transparent) right/28px 100% no-repeat, radial-gradient(var(--grid-dot) 1px, transparent 1px);
+  background-size: 28px 100%, 24px 24px;
+}
+
+/* safe-area：底部 Tab 栏 / 底部动作栏 */
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.25rem);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* ---------- 滚动条 ---------- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-low/30 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-low/50;
+}
+
+/* 代码/日志凹面内的细滚动条 */
+.sunken-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
