@@ -1,147 +1,107 @@
-/**
- * Compatible packaging adapter for drpy-node
- * Wraps package-clean.mjs or creates staging zip/7z archive
- */
-import { execSync } from 'child_process';
-import { existsSync, readdirSync, statSync, mkdirSync, copyFileSync, rmSync, writeFileSync } from 'fs';
-import { join, basename, dirname, resolve, relative } from 'path';
-import { fileURLToPath } from 'url';
+import {execSync} from 'child_process';
+import {existsSync, readdirSync, statSync} from 'fs';
+import {join, basename, dirname, resolve, relative} from 'path';
+import url from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// @deprecated 黑名单打包模式已由 package-clean.mjs（白名单 + 生产依赖精确集）替代，本文件仅为兼容保留。
+// 用法：node package-clean.mjs [-z] [-g] [--prod-install]，设计见 docs/package-design.md
 
-const ROOT_FILES = ['index.js', 'package.json', 'README.md', 'LICENSE', 'Dockerfile', 'docker-compose.yml'];
-const ROOT_DIRS = ['controllers', 'libs', 'libs_drpy', 'utils', 'spider', 'jx', 'json', 'config', 'public', 'apps', 'install'];
-const SUB_PATHS = ['docs/changelog', 'docs/openapi.json'];
-const DIR_EXCLUDES = [
-    'config/env.json',
-    'config/source-states.json',
-    'apps/cat',
-    'spider/js_bad',
-    'spider/js_dr2_old',
-    'spider/js_todo',
-    'spider/jstest',
-    'spider/drop_code',
-];
-const DATA_SKELETON = ['data/settings', 'data/temp', 'data/market-tmp'];
-const SOURCE_EXCLUDES = [
-    'spider/js/UC分享.js',
-    'spider/js/百忙无果[官].js',
-    'spider/catvod/mtv60w[差].js',
-    'json/UC分享.json',
-    'jx/_30wmv.js',
-    'jx/奇奇.js',
-    'jx/芒果关姐.js',
-];
-const GREEN_FILE_RE = /\[[^\]]*密[^\]]*\]/;
+// 要排除的目录列表
+const EXCLUDE_DIRS = ['.git', '.idea', '.playwright-mcp', 'soft', 'examples', 'apps/cat', 'plugins/pvideo', 'plugins/req-proxy', 'plugins/pup-sniffer', 'plugins/mediaProxy', 'pyTools', 'drop_code', 'local', 'logs', '对话1.txt', 'vod_cache', 'data/mv', 'drpy-node-mcp', 'drpy-node-bundle', 'drpy-node-admin', 'drpy2-quickjs', 'node-pty'];
 
-function isExcludedSource(relPath, { green = false } = {}) {
-    const norm = relPath.replace(/\\/g, '/');
-    if (SOURCE_EXCLUDES.includes(norm)) return true;
-    if (green && GREEN_FILE_RE.test(basename(norm))) return true;
-    return false;
-}
+// 要排除的文件列表
+const EXCLUDE_FILES = ['config/env.json', '.env', '.claude', 'clipboard.txt', 'clipboard.txt.bak', '.plugins.js', 'yarn.lock', 't4_daemon.pid', 'spider/js/UC分享.js', 'spider/js/百忙无果[官].js', 'spider/catvod/mtv60w[差].js', 'json/UC分享.json', 'jx/_30wmv.js', 'jx/奇奇.js', 'jx/芒果关姐.js', 'data/settings/link_data.json', 'index.json', 'custom.json'];
 
-function copyDir(src, dest, { green = false, root = '' } = {}) {
-    mkdirSync(dest, { recursive: true });
-    for (const entry of readdirSync(src)) {
-        const relPath = root ? `${root}/${entry}` : entry;
-        if (DIR_EXCLUDES.includes(relPath)) continue;
-        const srcPath = join(src, entry);
-        const stat = statSync(srcPath);
-        if (stat.isDirectory()) {
-            copyDir(srcPath, join(dest, entry), { green, root: relPath });
-        } else {
-            if (isExcludedSource(relPath, { green })) continue;
-            copyFileSync(srcPath, join(dest, entry));
+// 获取脚本所在目录
+const getScriptDir = () => dirname(resolve(url.fileURLToPath(import.meta.url)));
+
+// 筛选带 [密] 的文件
+const filterGreenFiles = (scriptDir) => {
+    const jsDir = join(scriptDir, 'spider/js');
+    const greenFiles = [];
+
+    if (existsSync(jsDir)) {
+        const stack = [jsDir];
+        while (stack.length) {
+            const currentDir = stack.pop();
+            const items = readdirSync(currentDir);
+            for (const item of items) {
+                const fullPath = join(currentDir, item);
+                const stats = statSync(fullPath);
+                if (stats.isDirectory()) {
+                    stack.push(fullPath);
+                } else if (/\[密[^\]]*\]/.test(item)) {
+                    greenFiles.push(relative(scriptDir, fullPath));
+                }
+            }
         }
     }
-}
+    return greenFiles;
+};
 
-function copyNodeModules(root, staging) {
-    const srcNm = join(root, 'node_modules');
-    const destNm = join(staging, 'node_modules');
-    if (!existsSync(srcNm)) return;
-    mkdirSync(destNm, { recursive: true });
+// 压缩目录
+const compressDirectory = (scriptDir, green, useZip) => {
+    const currentDir = basename(scriptDir);
+    const currentTime = new Date().toLocaleDateString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).replace(/\//g, '');
+    const archiveSuffix = green ? '-green' : '';
+    const archiveExt = useZip ? '.zip' : '.7z';
+    const archiveName = `${currentDir}-${currentTime}${archiveSuffix}${archiveExt}`;
 
-    const items = readdirSync(srcNm);
-    for (const item of items) {
-        if (item.startsWith('.')) continue;
-        const srcPath = join(srcNm, item);
-        const destPath = join(destNm, item);
-        const stat = statSync(srcPath);
-        if (stat.isDirectory()) {
-            copyDir(srcPath, destPath);
+    const parentDir = resolve(scriptDir, '..');
+    const archivePath = join(parentDir, archiveName);
+
+    // 构建压缩命令参数
+    const excludeParams = [];
+
+    // 排除目录
+    for (const excludeDir of EXCLUDE_DIRS) {
+        excludeParams.push(`-xr!${excludeDir}`);
+    }
+
+    // 排除文件
+    for (const excludeFile of EXCLUDE_FILES) {
+        const excludeFilePath = join(scriptDir, excludeFile);
+        if (existsSync(excludeFilePath)) {
+            excludeParams.push(`-xr!${excludeFile}`);
         } else {
-            copyFileSync(srcPath, destPath);
+            console.warn(`警告: ${excludeFile} 不存在!`);
         }
     }
-}
 
-function buildStaging(root, staging, { green = false } = {}) {
-    if (existsSync(staging)) rmSync(staging, { recursive: true, force: true });
-    mkdirSync(staging, { recursive: true });
-
-    for (const file of ROOT_FILES) {
-        if (existsSync(join(root, file))) copyFileSync(join(root, file), join(staging, file));
-    }
-    for (const dir of ROOT_DIRS) {
-        if (existsSync(join(root, dir))) copyDir(join(root, dir), join(staging, dir), { green, root: dir });
-    }
-    for (const sub of SUB_PATHS) {
-        const src = join(root, sub);
-        if (!existsSync(src)) continue;
-        if (statSync(src).isFile()) {
-            mkdirSync(dirname(join(staging, sub)), { recursive: true });
-            copyFileSync(src, join(staging, sub));
-        } else {
-            copyDir(src, join(staging, sub), { root: sub });
+    // 如果启用 green 筛选，排除不符合条件的文件
+    if (green) {
+        const greenFiles = filterGreenFiles(scriptDir);
+        for (const file of greenFiles) {
+            excludeParams.push(`-x!${file}`);
         }
     }
-    for (const skeleton of DATA_SKELETON) {
-        const dir = join(staging, skeleton);
-        mkdirSync(dir, { recursive: true });
-        writeFileSync(join(dir, '.gitkeep'), '');
+
+    // 构建命令，打包目录内容而不包含目录本身
+    const command = `7z a -t${useZip ? 'zip' : '7z'} "${archivePath}" "${join(scriptDir, '*')}" -r ${excludeParams.join(' ')}`;
+    console.log(`构建的 7z 命令: ${command}`);
+
+    try {
+        execSync(command, {stdio: 'inherit'});
+        console.log(`压缩完成: ${archivePath}`);
+    } catch (error) {
+        console.error(`压缩失败: ${error.message}`);
     }
+};
 
-    copyNodeModules(root, staging);
-    return staging;
-}
+// 主程序入口
+const main = () => {
+    const scriptDir = getScriptDir();
 
-function main() {
-    const root = __dirname;
+    // 简单解析命令行参数
     const args = process.argv.slice(2);
     const green = args.includes('-g') || args.includes('--green');
     const useZip = args.includes('-z') || args.includes('--zip');
 
-    const now = new Date();
-    const date = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-    const baseProj = basename(root);
-
-    const namesToBuild = [
-        `drpy-node-${date}${green ? '-green' : ''}${useZip ? '.zip' : '.7z'}`,
-    ];
-    if (baseProj !== 'drpy-node') {
-        namesToBuild.push(`${baseProj}-${date}${green ? '-green' : ''}${useZip ? '.zip' : '.7z'}`);
-    }
-
-    const staging = resolve(root, '..', `drpy-node-staging-${date}${green ? '-green' : ''}`);
-    console.log(`[package.js] staging: ${staging}`);
-    buildStaging(root, staging, { green });
-
-    const type = useZip ? 'zip' : '7z';
-    const primaryArchive = resolve(root, '..', namesToBuild[0]);
-    console.log(`[package.js] archiving to ${primaryArchive}`);
-    execSync(`7z a -t${type} "${primaryArchive}" "${join(staging, '*')}" -xr!.gitkeep`, { stdio: 'inherit' });
-
-    for (let i = 1; i < namesToBuild.length; i++) {
-        const target = resolve(root, '..', namesToBuild[i]);
-        console.log(`[package.js] duplicating link/copy to ${target}`);
-        copyFileSync(primaryArchive, target);
-    }
-
-    rmSync(staging, { recursive: true, force: true });
-    console.log(`[package.js] finished: ${primaryArchive}`);
-}
+    compressDirectory(scriptDir, green, useZip);
+};
 
 main();

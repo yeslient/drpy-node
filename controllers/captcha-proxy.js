@@ -134,6 +134,7 @@ export default (fastify, options, done) => {
 
     // 本地状态探测：源可据此判断是否走本代
     fastify.get('/captcha/status', {
+        config: {auth: 'public'}, // 源探测依赖，与 /captcha/* 通配一致豁免全局 Basic
         schema: {
             tags: ['验证码代理'],
             summary: 'drpys 本地探测代理可用性',
@@ -150,6 +151,7 @@ export default (fastify, options, done) => {
     // 通配透传 /captcha/*（ocr / detect / rotate / slide / health 等），路径原样保留：
     // 源只需把 host:port 换成 drpys 主服务，路径与直连插件完全一致
     fastify.all('/captcha/*', {
+        config: {auth: 'public'}, // 源依赖：源直连主服务完成验证码识别，路径原样透传插件
         schema: {
             tags: ['验证码代理'],
             summary: '验证码识别透传（ocr/detect/rotate/slide/health）',
