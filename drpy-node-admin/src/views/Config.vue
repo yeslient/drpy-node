@@ -91,12 +91,7 @@ const configDescriptions = {
   show_req: '显示请求详情',
   hide_adult: '隐藏成人内容 (0=显示, 1=隐藏)',
   enable_self_jx: '启用自建解析',
-  cat_sub_code: 'CatVod 订阅代码',
-  search_mode: '聚合搜索模式：exact=精确(只保留标题与关键词完全相同的结果) / fuzzy=模糊(不过滤，各源原样返回)。也可填 精确/模糊/1/0',
-  search_sources: '聚合搜索范围：all=全部可搜索源，或逗号分隔的源key/名称',
-  search_concurrency: '聚合搜索并发数 1-64，默认32。实测433源：16→84s 24→58s 32→47s',
-  search_timeout: '聚合搜索单源超时(毫秒) 1000-60000，默认8000。实测p95=8.9s',
-  search_deadline: '聚合搜索总超时(毫秒) 3000-180000，默认60000。到时未查完的源跳过'
+  cat_sub_code: 'CatVod 订阅代码'
 }
 
 const groups = {
@@ -108,7 +103,6 @@ const groups = {
   '仓库配置': ['HOUSE_TOKEN', 'HOUSER_URL'],
   'MCP 认证': ['MCP_TOKEN'],
   '直播配置': ['LIVE_URL', 'EPG_URL', 'LOGO_URL'],
-  '聚合搜索': ['search_mode', 'search_sources', 'search_concurrency', 'search_timeout', 'search_deadline'],
   '其他设置': ['thread', 'api_pwd', 'link_url', 'enable_link_data', 'enable_link_push', 'enable_link_jar', 'mg_hz', 'show_curl', 'show_req', 'enable_rule_name', 'hide_adult', 'cat_sub_code', 'must_sub_code']
 }
 
