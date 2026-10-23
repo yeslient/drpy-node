@@ -446,6 +446,16 @@ function startPlugin(plugin, rootDir) {
                 stdio: ["ignore", "pipe", "pipe"]
             });
 
+            // 先挂 error 监听再检查 pid（fix: 异步 spawn 失败冒泡为未捕获异常）：
+            // EACCES/ENOENT 等错误经 'error' 事件异步触发，此刻 proc.pid 尚未赋值；
+            // 若先判 pid 就提前 return，监听器还没挂上，错误将无人处理而冒泡。
+            proc.on("error", (err) => {
+                logError(`[pluginManager] Node插件 ${plugin.name} 运行中出错:`, err.message);
+                // 标记为“启动失败”，避免 exit 再重复打印
+                proc._failedToSpawn = true;
+            });
+
+            // 检查是否真的启动了
             if (!proc || !proc.pid) {
                 logError(`[pluginManager] Node插件 ${plugin.name} 启动失败 (无效的进程 PID)`);
                 return null;
@@ -457,11 +467,6 @@ function startPlugin(plugin, rootDir) {
 
             proc.stderr.on("data", (data) => {
                 log(`[${plugin.name}-STD]`, data.toString().trim());
-            });
-
-            proc.on("error", (err) => {
-                logError(`[pluginManager] Node插件 ${plugin.name} 运行中出错:`, err.message);
-                proc._failedToSpawn = true;
             });
 
             proc.on("exit", (code, signal) => {
@@ -508,6 +513,16 @@ function startPlugin(plugin, rootDir) {
                 stdio: ["ignore", "pipe", "pipe"]
             });
 
+            // 先挂 error 监听再检查 pid（fix: 异步 spawn 失败冒泡为未捕获异常）：
+            // EACCES/ENOENT 等错误经 'error' 事件异步触发，此刻 proc.pid 尚未赋值；
+            // 若先判 pid 就提前 return，监听器还没挂上，错误将无人处理而冒泡。
+            proc.on("error", (err) => {
+                logError(`[pluginManager] Python插件 ${plugin.name} 运行中出错:`, err.message);
+                // 标记为“启动失败”，避免 exit 再重复打印
+                proc._failedToSpawn = true;
+            });
+
+            // 检查是否真的启动了
             if (!proc || !proc.pid) {
                 logError(`[pluginManager] Python插件 ${plugin.name} 启动失败 (无效的进程 PID)`);
                 return null;
@@ -519,11 +534,6 @@ function startPlugin(plugin, rootDir) {
 
             proc.stderr.on("data", (data) => {
                 log(`[${plugin.name}-STD]`, data.toString().trim());
-            });
-
-            proc.on("error", (err) => {
-                logError(`[pluginManager] Python插件 ${plugin.name} 运行中出错:`, err.message);
-                proc._failedToSpawn = true;
             });
 
             proc.on("exit", (code, signal) => {
@@ -555,6 +565,24 @@ function startPlugin(plugin, rootDir) {
         // 用 pipe 方式，便于我们捕获插件日志
         proc = spawn(binary, args, {stdio: ["ignore", "pipe", "pipe"]});
 
+        // 先挂 error 监听再检查 pid（fix: 异步 spawn 失败冒泡为未捕获异常）：
+        // EACCES/ENOENT 等错误经 'error' 事件异步触发，此刻 proc.pid 尚未赋值；
+        // 若先判 pid 就提前 return，监听器还没挂上，错误将无人处理而冒泡。
+        proc.on("error", (err) => {
+            if (err.code === "EACCES") {
+                logError(`[pluginManager] 插件 ${plugin.name} 无法执行: 没有执行权限，请运行: chmod +x ${binary}`);
+                if (process.platform === "android") {
+                    logError(`[pluginManager] 提示: Android 禁止从外置存储（/sdcard、/storage/emulated）执行二进制，请将插件安装到应用内部存储（/data/user/0/...）后再启动`);
+                }
+            } else if (err.code === "ENOENT") {
+                logError(`[pluginManager] 插件 ${plugin.name} 启动失败: 找不到可执行文件 ${binary}`);
+            } else {
+                logError(`[pluginManager] 插件 ${plugin.name} 运行中出错:`, err.message);
+            }
+            // 标记为“启动失败”，避免 exit 再重复打印
+            proc._failedToSpawn = true;
+        });
+
         // 检查是否真的启动了
         if (!proc || !proc.pid) {
             logError(`[pluginManager] 插件 ${plugin.name} 启动失败 (无效的进程 PID)`);
@@ -567,18 +595,6 @@ function startPlugin(plugin, rootDir) {
 
         proc.stderr.on("data", (data) => {
             log(`[${plugin.name}-STD]`, data.toString().trim());
-        });
-
-        proc.on("error", (err) => {
-            if (err.code === "EACCES") {
-                logError(`[pluginManager] 插件 ${plugin.name} 无法执行: 没有执行权限，请运行: chmod +x ${binary}`);
-            } else if (err.code === "ENOENT") {
-                logError(`[pluginManager] 插件 ${plugin.name} 启动失败: 找不到可执行文件 ${binary}`);
-            } else {
-                logError(`[pluginManager] 插件 ${plugin.name} 运行中出错:`, err.message);
-            }
-            // 标记为“启动失败”，避免 exit 再重复打印
-            proc._failedToSpawn = true;
         });
 
         proc.on("exit", (code, signal) => {
