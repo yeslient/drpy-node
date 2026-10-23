@@ -1,7 +1,13 @@
 name: package-drpy-node
 
-# 在 fork 的 Actions 页面点 "Run workflow" 按钮手动触发
-# 产物以 artifact 形式挂在 run 下面，不公开创建 Release
+# 触发方式二选一：
+#   1. fork 的 Actions 页面点 "Run workflow"（需要 github.com 网页可达）
+#   2. API 触发（github.com 被墙时用，见 api_build.py）：
+#      POST /repos/<你>/drpy-node/actions/workflows/package.yml/dispatches
+# 产物双通道：artifact + dist 分支
+#   - artifact：Actions run 页面下载（下载域名 actions.githubusercontent.com 国内可能不通）
+#   - dist 分支：codeload.github.com 直接下载（实测国内可达）
+#     https://codeload.github.com/<你>/drpy-node/tar.gz/refs/heads/dist
 on:
   workflow_dispatch:
     inputs:
@@ -18,19 +24,19 @@ on:
           - both
         default: zip
 
+permissions:
+  contents: write   # 允许推送 dist 分支
+
 jobs:
   package:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          # 不配 cache: 'npm' —— 本 fork 无 package-lock.json，配了会直接报错
 
       - name: Install 7zip
         run: |
@@ -38,11 +44,11 @@ jobs:
           sudo apt-get install -y p7zip-full
 
       - name: Install dependencies
-        # 用 npm install 而非 npm ci：fork 里没有 lockfile，npm ci 必失败
-        # --omit=optional 跳过 node-pty 等原生编译（打包脚本的生产依赖快照同样排除 optional，不影响产物）
+        # npm install 而非 npm ci：本 fork 无 package-lock.json
+        # --omit=optional 跳过 node-pty 等原生编译（打包脚本的生产依赖快照同样排除 optional）
         run: npm install --omit=optional --no-audit --no-fund
 
-      - name: Run tests (失败不阻塞打包，稳定后可删除 continue-on-error)
+      - name: Run tests (失败不阻塞打包)
         continue-on-error: true
         run: npm test
 
@@ -52,12 +58,11 @@ jobs:
           if [ "${{ inputs.green }}" = "true" ]; then ARGS="$ARGS -g"; fi
           echo "package args: $ARGS"
           if [ "${{ inputs.format }}" = "both" ]; then
-            node package-clean.mjs $ARGS          # 7z
-            node package-clean.mjs $ARGS -z       # zip
+            node package-clean.mjs $ARGS
+            node package-clean.mjs $ARGS -z
           else
             node package-clean.mjs $ARGS ${{ inputs.format == 'zip' && '-z' || '' }}
           fi
-          # 脚本把产物放在仓库上级目录（/home/runner/work/<repo>/）
           cd ..
           ls -la drpy-node-*.zip drpy-node-*.7z 2>/dev/null || echo "no archive found"
 
@@ -76,3 +81,27 @@ jobs:
           name: drpy-node-package
           path: dist/
           if-no-files-found: error
+
+      # Fallback 下载通道：推送到 dist 分支。
+      # artifact 下载域名（*.actions.githubusercontent.com）在国内可能不通，
+      # codeload.github.com 实测可达，可用 API/curl 直接下载分支打包。
+      - name: Push to dist branch (fallback)
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          DATE=$(date +%Y%m%d-%H%M)
+          git checkout --orphan dist-tmp
+          git rm -rf . >/dev/null 2>&1 || true
+          cp dist/drpy-node-*.zip . 2>/dev/null || true
+          cp dist/drpy-node-*.7z . 2>/dev/null || true
+          {
+            echo "构建时间: $DATE (UTC)"
+            echo "格式: ${{ inputs.format }}  green: ${{ inputs.green }}"
+            echo "下载: https://codeload.github.com/${{ github.repository }}/tar.gz/refs/heads/dist"
+          } > BUILD-INFO.txt
+          git add -A
+          git commit -m "package $DATE" || echo "nothing to commit"
+          git branch -D dist 2>/dev/null || true
+          git branch -m dist
+          git push -f origin dist
