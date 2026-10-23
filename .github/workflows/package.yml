@@ -1,0 +1,78 @@
+name: package-drpy-node
+
+# 在 fork 的 Actions 页面点 "Run workflow" 按钮手动触发
+# 产物以 artifact 形式挂在 run 下面，不公开创建 Release
+on:
+  workflow_dispatch:
+    inputs:
+      green:
+        description: '绿色包：剔除文件名含 [密] 的私密源（-g）'
+        type: boolean
+        default: false
+      format:
+        description: '产物格式'
+        type: choice
+        options:
+          - zip
+          - 7z
+          - both
+        default: zip
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          # 不配 cache: 'npm' —— 本 fork 无 package-lock.json，配了会直接报错
+
+      - name: Install 7zip
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+
+      - name: Install dependencies
+        # 用 npm install 而非 npm ci：fork 里没有 lockfile，npm ci 必失败
+        # --omit=optional 跳过 node-pty 等原生编译（打包脚本的生产依赖快照同样排除 optional，不影响产物）
+        run: npm install --omit=optional --no-audit --no-fund
+
+      - name: Run tests (失败不阻塞打包，稳定后可删除 continue-on-error)
+        continue-on-error: true
+        run: npm test
+
+      - name: Build package
+        run: |
+          ARGS=""
+          if [ "${{ inputs.green }}" = "true" ]; then ARGS="$ARGS -g"; fi
+          echo "package args: $ARGS"
+          if [ "${{ inputs.format }}" = "both" ]; then
+            node package-clean.mjs $ARGS          # 7z
+            node package-clean.mjs $ARGS -z       # zip
+          else
+            node package-clean.mjs $ARGS ${{ inputs.format == 'zip' && '-z' || '' }}
+          fi
+          # 脚本把产物放在仓库上级目录（/home/runner/work/<repo>/）
+          cd ..
+          ls -la drpy-node-*.zip drpy-node-*.7z 2>/dev/null || echo "no archive found"
+
+      - name: Collect artifacts into workspace
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cd ..
+          for f in drpy-node-*.zip drpy-node-*.7z; do
+            [ -e "$f" ] && mv "$f" "$GITHUB_WORKSPACE/dist/"
+          done
+          ls -la "$GITHUB_WORKSPACE/dist"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: drpy-node-package
+          path: dist/
+          if-no-files-found: error
