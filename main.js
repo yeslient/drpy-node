@@ -49,6 +49,11 @@ setTimeout(() => {
     startAllPlugins(__dirname);
 }, 0);
 
+// 启动期保活：插件列表为空时 startAllPlugins 不产生任何句柄，listen 之前的 await 链
+// 可能出现事件循环空窗，进程会以 code 0 静默退出（实测 Android 壳子/裸包均复现）。
+// 保活到服务器成功监听为止。
+const __startupKeepAlive = setInterval(() => {}, 30000);
+
 // 添加钩子事件
 fastify.addHook('onReady', async () => {
     await checkPhpAvailable();
@@ -287,6 +292,7 @@ const start = async () => {
         await fastify.listen({port: PORT, host: '::'});
         // 启动 WebSocket 服务器 (端口 57577)
         await startWebSocketServer({port: WsPORT, host: '::'});
+        clearInterval(__startupKeepAlive);
 
         // 获取本地和局域网地址
         const localAddress = `http://localhost:${PORT}`;
@@ -353,10 +359,6 @@ export default async function handler(req, res) {
     fastify.server.emit('request', req, res)
 }
 
-// 判断当前模块是否为主模块，如果是主模块，则启动服务
-const currentFile = path.normalize(fileURLToPath(import.meta.url)); // 使用 normalize 确保路径一致
-const indexFile = path.normalize(path.resolve(__dirname, 'index.js')); // 标准化路径
-
-if (currentFile === indexFile) {
-    start();
-}
+// 两级入口后 main.js 只会由 index.js 加载；原"主模块判断"(currentFile === indexFile)
+// 在新架构下恒为假，会导致 start() 永不执行、进程以 code 0 静默退出，故无条件启动。
+start();
