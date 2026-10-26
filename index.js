@@ -4,7 +4,15 @@
 import './utils/crashGuard.js';
 import {reportCrash} from './utils/crashGuard.js';
 
-await import('./main.js').catch((err) => {
+// main.js 同时兼容两种宿主：
+//  - CLI/壳子：模块加载即自行 start()（见 main.js 末尾的 VERCEL 条件）
+//  - Vercel/serverless：不监听端口，由下方转发的 default handler 处理请求
+let handler = null;
+try {
+    const mod = await import('./main.js');
+    handler = mod.default;
+} catch (err) {
     reportCrash('bootstrap-failed', err);
     process.exit(1);
-});
+}
+export default handler;

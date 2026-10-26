@@ -7,7 +7,6 @@ import path from 'path';
 import {checkPhpAvailable} from './utils/phpEnv.js';
 import os from 'os';
 import qs from 'qs';
-import {fileURLToPath} from 'url';
 import {validateBasicAuth, validateJs, validatePwd, validatHtml} from "./utils/api_validate.js";
 import {withTimeout} from "./utils/with-timeout.js";
 import {startAllPlugins, stopAllPlugins} from "./utils/pluginManager.js";
@@ -49,10 +48,7 @@ setTimeout(() => {
     startAllPlugins(__dirname);
 }, 0);
 
-// 启动期保活：插件列表为空时 startAllPlugins 不产生任何句柄，listen 之前的 await 链
-// 可能出现事件循环空窗，进程会以 code 0 静默退出（实测 Android 壳子/裸包均复现）。
-// 保活到服务器成功监听为止。
-const __startupKeepAlive = setInterval(() => {}, 30000);
+
 
 // 添加钩子事件
 fastify.addHook('onReady', async () => {
@@ -286,6 +282,10 @@ const stopWebSocketServer = async () => {
 
 // 启动服务
 const start = async () => {
+    // 启动期保活：插件列表为空时 startAllPlugins 不产生任何句柄，listen 之前的 await 链
+    // 可能出现事件循环空窗，进程会以 code 0 静默退出（实测 Android 壳子/裸包均复现）。
+    // 保活到服务器成功监听为止；仅在真实启动时存在，serverless/被 import 时不干扰宿主。
+    const __startupKeepAlive = setInterval(() => {}, 30000);
     try {
         // 启动 Fastify 主服务
         // await fastify.listen({port: PORT, host: '0.0.0.0'});
@@ -359,6 +359,10 @@ export default async function handler(req, res) {
     fastify.server.emit('request', req, res)
 }
 
-// 两级入口后 main.js 只会由 index.js 加载；原"主模块判断"(currentFile === indexFile)
-// 在新架构下恒为假，会导致 start() 永不执行、进程以 code 0 静默退出，故无条件启动。
-start();
+// 两级入口后 main.js 只会由 index.js 加载：CLI/壳子场景必须 start()（原"主模块判断"
+// 在新架构下恒为假，会导致 start() 永不执行、进程以 code 0 静默退出）。
+// Vercel 等 serverless 平台以 import 方式加载本模块并调用 default handler，
+// 不能监听端口——用平台注入的 VERCEL 环境变量区分两种宿主。
+if (!process.env.VERCEL) {
+    start();
+}

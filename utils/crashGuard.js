@@ -46,7 +46,6 @@ export function reportCrash(kind, err) {
         } catch {
             try { fs.writeSync(2, text); } catch { /* 连 stderr 都没了：放弃 */ }
         }
-        try { fs.writeSync(2, text); } catch { /* 同上 */ }
     }
 }
 
