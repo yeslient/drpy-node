@@ -19,7 +19,7 @@ import {pathToFileURL, fileURLToPath} from 'url';
 // ==================== 配置（单一配置源） ====================
 
 // 根级单文件白名单
-const ROOT_FILES = ['index.js', 'package.json', 'README.md', 'LICENSE', 'Dockerfile', 'docker-compose.yml'];
+const ROOT_FILES = ['index.js', 'main.js', 'package.json', 'README.md', 'LICENSE', 'Dockerfile', 'docker-compose.yml'];
 
 // 整目录白名单（递归复制）
 const ROOT_DIRS = ['controllers', 'libs', 'libs_drpy', 'utils', 'spider', 'jx', 'json', 'config', 'public', 'apps', 'install'];
@@ -133,7 +133,7 @@ export function isExcludedSource(relPath, {green = false} = {}) {
  */
 export function smokeCheck(staging) {
     const problems = [];
-    const mustExist = ['index.js', 'package.json', join('controllers', 'index.js'), join('node_modules', 'fastify'), join('docs', 'changelog'), join('docs', 'openapi.json')];
+    const mustExist = ['index.js', 'main.js', 'package.json', join('controllers', 'index.js'), join('node_modules', 'fastify'), join('docs', 'changelog'), join('docs', 'openapi.json')];
     for (const p of mustExist) {
         if (!existsSync(join(staging, p))) problems.push(`缺少必需内容: ${p}`);
     }
