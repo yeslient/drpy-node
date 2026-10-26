@@ -78,7 +78,7 @@ test('isExcludedSource: green 模式剔除任何路径下带 [密] 标记的私�
 test('smokeCheck: 合法 staging 通过', () => {
     const staging = fs.mkdtempSync(path.join('node_modules', '.pkg-test-'));
     try {
-        for (const p of ['index.js', 'package.json', path.join('controllers', 'index.js'), path.join('node_modules', 'fastify'), path.join('docs', 'changelog', 'v2.0.0.md'), path.join('docs', 'openapi.json')]) {
+        for (const p of ['index.js', 'main.js', 'package.json', path.join('controllers', 'index.js'), path.join('node_modules', 'fastify'), path.join('docs', 'changelog', 'v2.0.0.md'), path.join('docs', 'openapi.json')]) {
             fs.mkdirSync(path.dirname(path.join(staging, p)), {recursive: true});
             fs.writeFileSync(path.join(staging, p), '');
         }
